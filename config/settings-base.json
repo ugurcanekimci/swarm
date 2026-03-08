@@ -1,0 +1,23 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0"
+  },
+  "mcpServers": {
+    "swarm": {
+      "command": "npx",
+      "args": ["tsx", "/workspace/extra/swarm-project/src/mcp/stdio.ts"],
+      "env": {
+        "OBSIDIAN_VAULT": "/workspace/extra/swarm-kb",
+        "DATA_DIR": "/workspace/group/data",
+        "CRAWL4AI_URL": "http://host.docker.internal:11235",
+        "CAMOFOX_URL": "http://host.docker.internal:9377",
+        "OLLAMA_URL": "http://host.docker.internal:11434"
+      }
+    }
+  },
+  "permissions": {
+    "allow": ["mcp__swarm__*"]
+  }
+}

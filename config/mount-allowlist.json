@@ -1,0 +1,18 @@
+{
+  "allowedRoots": [
+    {
+      "path": "/Users/u/Documents/swarm-kb",
+      "allowReadWrite": true,
+      "description": "Obsidian knowledge base vault (shared by all agents)"
+    },
+    {
+      "path": "/Users/u/swarm",
+      "allowReadWrite": true,
+      "description": "Swarm API project (coder agent needs write, review gets read-only)"
+    }
+  ],
+  "blockedPatterns": [
+    ".ssh", ".gnupg", ".aws", ".docker", "credentials",
+    ".env", "*.pem", "*.key", "node_modules"
+  ]
+}

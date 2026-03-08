@@ -1,0 +1,41 @@
+services:
+  # Swarm API — YouTube + X transcript ingestion + MCP server
+  swarm-api:
+    build: .
+    ports:
+      - "3100:3100"
+    volumes:
+      - /Users/u/Documents/swarm-kb:/app/swarm-kb
+    environment:
+      - PORT=3100
+      - OBSIDIAN_VAULT=/app/swarm-kb
+      - CRAWL4AI_URL=http://crawl4ai:11235
+      - CAMOFOX_URL=http://camofox:9377
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - APIFY_API_TOKEN=${APIFY_API_TOKEN:-}
+      - PROXY_HOST=${PROXY_HOST:-}
+      - PROXY_PORT=${PROXY_PORT:-}
+      - PROXY_USER=${PROXY_USER:-}
+      - PROXY_PASS=${PROXY_PASS:-}
+    depends_on:
+      - crawl4ai
+    restart: unless-stopped
+
+  # Crawl4AI — self-hosted scraping engine (Bright Data replacement)
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    ports:
+      - "11235:11235"
+    restart: unless-stopped
+
+  # Camoufox — anti-detect browser REST API (for protected sites)
+  camofox:
+    image: jo-inc/camofox-browser
+    ports:
+      - "9377:9377"
+    environment:
+      - PROXY_HOST=${PROXY_HOST:-}
+      - PROXY_PORT=${PROXY_PORT:-}
+      - PROXY_USERNAME=${PROXY_USER:-}
+      - PROXY_PASSWORD=${PROXY_PASS:-}
+    restart: unless-stopped
