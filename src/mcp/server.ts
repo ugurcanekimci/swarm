@@ -2,16 +2,14 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { getTranscript } from "../core/transcript.js";
 import { batchFetch } from "../core/batch.js";
-import { writeYouTubeTranscript, writeResearch, readNote } from "../obsidian/vault.js";
-import { listEntries, listRecent, listByTag, type IndexEntry } from "../obsidian/index-manager.js";
+import { writeResearch, readNote } from "../obsidian/vault.js";
+import { listRecent, listByTag, type IndexEntry } from "../obsidian/index-manager.js";
 import { searchVault } from "../obsidian/query.js";
 import { truncateToTokenBudget } from "../context/truncator.js";
-import { frontmatterSummary, extractTopics } from "../context/summarizer.js";
-import { fetchAndStoreTweet, fetchAndStoreUserTimeline, searchAndStoreTweets } from "../x-twitter/fetcher.js";
 import { smartScrape } from "../scraping/router.js";
-import { ingestYouTubeVideo } from "../agents/ingest/scheduler.js";
+import { ingestYouTubeVideo } from "../ingest/youtube.js";
+import { ingestTweet, ingestUserTimeline, ingestSearchTweets } from "../ingest/x-twitter.js";
 import { planTask, getCostReport } from "../orchestrator/index.js";
-import { generateMOC } from "../obsidian/moc.js";
 import { config } from "../config.js";
 
 export const transcriptMcpServer = createSdkMcpServer({
@@ -86,7 +84,7 @@ export const transcriptMcpServer = createSdkMcpServer({
         url: z.string().describe("Tweet URL (x.com or twitter.com) or tweet ID"),
       },
       async (args) => {
-        const tweet = await fetchAndStoreTweet(args.url);
+        const tweet = await ingestTweet(args.url);
 
         const output = [
           `# @${tweet.author}`,
@@ -110,7 +108,7 @@ export const transcriptMcpServer = createSdkMcpServer({
         limit: z.number().min(1).max(50).default(10),
       },
       async (args) => {
-        const tweets = await fetchAndStoreUserTimeline(args.username, args.limit);
+        const tweets = await ingestUserTimeline(args.username, args.limit);
 
         const lines = tweets.map((t) =>
           `- [[x-posts/${t.tweetId}]] ${t.content.slice(0, 80)}...`,
@@ -128,7 +126,7 @@ export const transcriptMcpServer = createSdkMcpServer({
         limit: z.number().min(1).max(50).default(10),
       },
       async (args) => {
-        const tweets = await searchAndStoreTweets(args.query, args.limit);
+        const tweets = await ingestSearchTweets(args.query, args.limit);
 
         const lines = tweets.map((t) =>
           `- @${t.author}: ${t.content.slice(0, 80)}... [[x-posts/${t.tweetId}]]`,

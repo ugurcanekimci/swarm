@@ -4,15 +4,14 @@ import { TranscriptRequestSchema, BatchRequestSchema } from "../types.js";
 import type { ApiError } from "../types.js";
 import { getTranscript } from "../core/transcript.js";
 import { batchFetch } from "../core/batch.js";
-import { storeTranscript, readTranscript, deleteTranscript } from "../knowledge-base/store.js";
-import { listEntries as legacyListEntries, getEntry as legacyGetEntry } from "../knowledge-base/index-manager.js";
-import { searchTranscripts } from "../knowledge-base/query.js";
-import { ingestYouTubeVideo } from "../agents/ingest/scheduler.js";
-import { fetchAndStoreTweet, fetchAndStoreUserTimeline, searchAndStoreTweets } from "../x-twitter/fetcher.js";
+import { ingestYouTubeVideo } from "../ingest/youtube.js";
+import { ingestTweet, ingestUserTimeline, ingestSearchTweets } from "../ingest/x-twitter.js";
 import { searchVault } from "../obsidian/query.js";
 import { listRecent, listByTag } from "../obsidian/index-manager.js";
 import { smartScrape } from "../scraping/router.js";
 import { planTask, getCostReport } from "../orchestrator/index.js";
+import { getStatus, triggerNow, readHistory } from "../scheduler/index.js";
+import { loadSources, saveSources, type SourceConfig } from "../ingest/sources.js";
 import { z } from "zod";
 
 export const api = new Hono();
@@ -64,12 +63,12 @@ api.post("/api/transcript", async (c) => {
   }
 
   try {
-    const transcript = await getTranscript(parsed.data.url, parsed.data.language);
     if (parsed.data.store) {
-      await storeTranscript(transcript);
-      // Also store in Obsidian vault
-      try { await ingestYouTubeVideo(parsed.data.url, parsed.data.language); } catch { /* non-fatal */ }
+      const entry = await ingestYouTubeVideo(parsed.data.url, parsed.data.language);
+      const transcript = await getTranscript(parsed.data.url, parsed.data.language);
+      return c.json({ ...transcript, stored: entry.id });
     }
+    const transcript = await getTranscript(parsed.data.url, parsed.data.language);
     return c.json(transcript);
   } catch (err) {
     const { status, body: errBody } = mapError(err);
@@ -90,7 +89,6 @@ api.post("/api/transcript/batch", async (c) => {
   if (parsed.data.store) {
     for (const r of results) {
       if (r.status === "success" && r.transcript) {
-        await storeTranscript(r.transcript);
         try { await ingestYouTubeVideo(r.videoId, parsed.data.language); } catch { /* non-fatal */ }
       }
     }
@@ -115,7 +113,7 @@ api.post("/api/x/tweet", async (c) => {
   }
 
   try {
-    const tweet = await fetchAndStoreTweet(parsed.data.url);
+    const tweet = await ingestTweet(parsed.data.url);
     return c.json(tweet);
   } catch (err) {
     return c.json(
@@ -137,7 +135,7 @@ api.post("/api/x/timeline", async (c) => {
   }
 
   try {
-    const tweets = await fetchAndStoreUserTimeline(parsed.data.username, parsed.data.limit);
+    const tweets = await ingestUserTimeline(parsed.data.username, parsed.data.limit);
     return c.json({ count: tweets.length, tweets });
   } catch (err) {
     return c.json(
@@ -159,7 +157,7 @@ api.post("/api/x/search", async (c) => {
   }
 
   try {
-    const tweets = await searchAndStoreTweets(parsed.data.query, parsed.data.limit);
+    const tweets = await ingestSearchTweets(parsed.data.query, parsed.data.limit);
     return c.json({ count: tweets.length, tweets });
   } catch (err) {
     return c.json(
@@ -213,26 +211,6 @@ api.get("/api/kb/search", async (c) => {
   return c.json({ count: results.length, results });
 });
 
-// GET /api/kb/:videoId — legacy endpoint (reads from old KB store)
-api.get("/api/kb/:videoId", async (c) => {
-  const videoId = c.req.param("videoId");
-  const entry = await legacyGetEntry(videoId);
-  if (!entry) {
-    return c.json({ error: "not_found", message: `No transcript stored for ${videoId}` }, 404 as ContentfulStatusCode);
-  }
-  const content = await readTranscript(videoId);
-  return c.json({ entry, content });
-});
-
-// DELETE /api/kb/:videoId — legacy endpoint
-api.delete("/api/kb/:videoId", async (c) => {
-  const videoId = c.req.param("videoId");
-  const removed = await deleteTranscript(videoId);
-  if (!removed) {
-    return c.json({ error: "not_found", message: `No transcript stored for ${videoId}` }, 404 as ContentfulStatusCode);
-  }
-  return c.json({ status: "deleted", videoId });
-});
 
 // === Orchestrator Endpoints ===
 
@@ -250,4 +228,39 @@ api.post("/api/plan", async (c) => {
 // GET /api/cost — cost report
 api.get("/api/cost", (c) => {
   return c.json(getCostReport());
+});
+
+// === Scheduler Endpoints ===
+
+// GET /api/scheduler/status — current job states
+api.get("/api/scheduler/status", (c) => {
+  return c.json({ jobs: getStatus() });
+});
+
+// POST /api/scheduler/trigger/:jobName — manually trigger a job
+api.post("/api/scheduler/trigger/:jobName", async (c) => {
+  const jobName = c.req.param("jobName");
+  const result = await triggerNow(jobName);
+  if (result === null) {
+    return c.json({ error: "not_found", message: `Job "${jobName}" not found` }, 404 as ContentfulStatusCode);
+  }
+  return c.json({ triggered: jobName, result });
+});
+
+// GET /api/scheduler/history — recent ingestion results
+api.get("/api/scheduler/history", (c) => {
+  const limit = parseInt(c.req.query("limit") || "50", 10);
+  return c.json({ history: readHistory(limit) });
+});
+
+// GET /api/sources — current source config
+api.get("/api/sources", (c) => {
+  return c.json(loadSources());
+});
+
+// PUT /api/sources — update source config
+api.put("/api/sources", async (c) => {
+  const body = await c.req.json() as SourceConfig;
+  saveSources(body);
+  return c.json({ status: "updated", message: "Restart the server to apply new schedules." });
 });

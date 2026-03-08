@@ -82,6 +82,24 @@ fi
 
 op inject -i "$SWARM_DIR/config/nanoclaw.env.tpl" -o "$NANOCLAW_DIR/.env" --force
 echo "  Secrets injected into $NANOCLAW_DIR/.env"
+
+# Refresh Claude Code OAuth token from macOS Keychain
+KEYCHAIN_CREDS=$(security find-generic-password -s 'Claude Code-credentials' -w 2>/dev/null || true)
+if [ -n "$KEYCHAIN_CREDS" ]; then
+  OAUTH_TOKEN=$(echo "$KEYCHAIN_CREDS" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d['claudeAiOauth']['accessToken'])" 2>/dev/null || true)
+  if [ -n "$OAUTH_TOKEN" ]; then
+    if grep -q "^CLAUDE_CODE_OAUTH_TOKEN=" "$NANOCLAW_DIR/.env"; then
+      sed -i '' "s|^CLAUDE_CODE_OAUTH_TOKEN=.*|CLAUDE_CODE_OAUTH_TOKEN=${OAUTH_TOKEN}|" "$NANOCLAW_DIR/.env"
+    else
+      echo "CLAUDE_CODE_OAUTH_TOKEN=${OAUTH_TOKEN}" >> "$NANOCLAW_DIR/.env"
+    fi
+    echo "  OAuth token refreshed from Keychain"
+  else
+    echo "  WARNING: Could not extract OAuth token from Keychain"
+  fi
+else
+  echo "  WARNING: No Claude Code credentials in Keychain (run: claude auth login)"
+fi
 echo ""
 
 # ─── Step 2: Mount Allowlist ─────────────────────────────────────────
@@ -98,7 +116,7 @@ echo ""
 
 echo "[3/6] Ensuring Obsidian vault structure..."
 
-mkdir -p "$VAULT_DIR"/{youtube,x-posts,research,agents,_index,_templates}
+mkdir -p "$VAULT_DIR"/{youtube,x-posts,research,changelogs,agents,_index,_templates}
 echo "  Vault directories OK at $VAULT_DIR"
 echo ""
 

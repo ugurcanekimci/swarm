@@ -5,11 +5,8 @@
 
 import { config } from "../config.js";
 import { extractTweetId, extractTweetMeta, formatThread, cleanTweetText } from "./parser.js";
-import { fetchTweetPage, fetchUserTimeline, searchNitter } from "./nitter.js";
-import { writeXPost } from "../obsidian/vault.js";
-import { upsertEntry, type IndexEntry } from "../obsidian/index-manager.js";
-import { frontmatterSummary, extractTopics } from "../context/summarizer.js";
-import { generateMOC } from "../obsidian/moc.js";
+import { fetchTweetPage, fetchUserTimeline as fetchNitterTimeline, searchNitter } from "./nitter.js";
+import { extractTopics } from "../context/summarizer.js";
 
 export interface FetchedTweet {
   tweetId: string;
@@ -78,61 +75,20 @@ export async function fetchTweet(urlOrId: string): Promise<FetchedTweet> {
 }
 
 /**
- * Fetch and store a tweet in the Obsidian vault.
+ * Fetch recent tweets from a user (pure data, no storage).
  */
-export async function fetchAndStoreTweet(urlOrId: string): Promise<FetchedTweet> {
-  const tweet = await fetchTweet(urlOrId);
-
-  // Write to Obsidian vault
-  await writeXPost({
-    tweetId: tweet.tweetId,
-    author: tweet.author,
-    authorName: tweet.authorName,
-    url: tweet.url,
-    isThread: tweet.isThread,
-    tweetCount: tweet.tweetCount,
-    content: tweet.content,
-    summary: frontmatterSummary(tweet.content),
-    tags: tweet.tags,
-  });
-
-  // Update index
-  const entry: IndexEntry = {
-    id: tweet.tweetId,
-    type: "x-post",
-    title: tweet.content.slice(0, 100) + (tweet.content.length > 100 ? "..." : ""),
-    url: tweet.url,
-    summary: frontmatterSummary(tweet.content),
-    tags: tweet.tags,
-    fetchedAt: tweet.fetchedAt,
-    filePath: `${tweet.tweetId}.md`,
-    author: tweet.author,
-    tweetCount: tweet.tweetCount,
-  };
-  await upsertEntry(entry);
-
-  // Regenerate MOC
-  await generateMOC();
-
-  return tweet;
-}
-
-/**
- * Fetch recent tweets from a user and store them.
- */
-export async function fetchAndStoreUserTimeline(
+export async function fetchUserTimelineRaw(
   username: string,
   limit = 20,
 ): Promise<FetchedTweet[]> {
-  const nitterTweets = await fetchUserTimeline(username, limit);
-  const results: FetchedTweet[] = [];
+  const nitterTweets = await fetchNitterTimeline(username, limit);
 
-  for (const tweet of nitterTweets) {
+  return nitterTweets.map((tweet) => {
     const cleaned = cleanTweetText(tweet.text);
     const meta = extractTweetMeta(tweet.text);
     const topics = extractTopics(cleaned);
 
-    const fetched: FetchedTweet = {
+    return {
       tweetId: tweet.id,
       author: tweet.author,
       authorName: tweet.authorName,
@@ -143,58 +99,23 @@ export async function fetchAndStoreUserTimeline(
       fetchedAt: new Date().toISOString(),
       tags: [...new Set([...meta.hashtags, ...topics.slice(0, 5)])],
     };
-
-    await writeXPost({
-      tweetId: fetched.tweetId,
-      author: fetched.author,
-      authorName: fetched.authorName,
-      url: fetched.url,
-      isThread: false,
-      tweetCount: 1,
-      content: fetched.content,
-      summary: frontmatterSummary(fetched.content),
-      tags: fetched.tags,
-    });
-
-    const entry: IndexEntry = {
-      id: fetched.tweetId,
-      type: "x-post",
-      title: fetched.content.slice(0, 100) + (fetched.content.length > 100 ? "..." : ""),
-      url: fetched.url,
-      summary: frontmatterSummary(fetched.content),
-      tags: fetched.tags,
-      fetchedAt: fetched.fetchedAt,
-      filePath: `${fetched.tweetId}.md`,
-      author: fetched.author,
-      tweetCount: 1,
-    };
-    await upsertEntry(entry);
-
-    results.push(fetched);
-  }
-
-  if (results.length > 0) {
-    await generateMOC();
-  }
-
-  return results;
+  });
 }
 
 /**
- * Search X and store results.
+ * Search X by keyword (pure data, no storage).
  */
-export async function searchAndStoreTweets(
+export async function searchTweetsRaw(
   query: string,
   limit = 20,
 ): Promise<FetchedTweet[]> {
   const nitterResults = await searchNitter(query, limit);
-  const results: FetchedTweet[] = [];
 
-  for (const tweet of nitterResults) {
+  return nitterResults.map((tweet) => {
     const cleaned = cleanTweetText(tweet.text);
     const meta = extractTweetMeta(tweet.text);
 
-    const fetched: FetchedTweet = {
+    return {
       tweetId: tweet.id,
       author: tweet.author,
       authorName: tweet.authorName,
@@ -205,41 +126,7 @@ export async function searchAndStoreTweets(
       fetchedAt: new Date().toISOString(),
       tags: [...new Set([...meta.hashtags, ...extractTopics(cleaned).slice(0, 5)])],
     };
-
-    await writeXPost({
-      tweetId: fetched.tweetId,
-      author: fetched.author,
-      authorName: fetched.authorName,
-      url: fetched.url,
-      isThread: false,
-      tweetCount: 1,
-      content: fetched.content,
-      summary: frontmatterSummary(fetched.content),
-      tags: fetched.tags,
-    });
-
-    const entry: IndexEntry = {
-      id: fetched.tweetId,
-      type: "x-post",
-      title: fetched.content.slice(0, 100) + (fetched.content.length > 100 ? "..." : ""),
-      url: fetched.url,
-      summary: frontmatterSummary(fetched.content),
-      tags: fetched.tags,
-      fetchedAt: fetched.fetchedAt,
-      filePath: `${fetched.tweetId}.md`,
-      author: fetched.author,
-      tweetCount: 1,
-    };
-    await upsertEntry(entry);
-
-    results.push(fetched);
-  }
-
-  if (results.length > 0) {
-    await generateMOC();
-  }
-
-  return results;
+  });
 }
 
 // --- Internal helpers ---
