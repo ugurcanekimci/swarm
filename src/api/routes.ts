@@ -12,9 +12,35 @@ import { smartScrape } from "../scraping/router.js";
 import { planTask, getCostReport } from "../orchestrator/index.js";
 import { getStatus, triggerNow, readHistory } from "../scheduler/index.js";
 import { loadSources, saveSources, type SourceConfig } from "../ingest/sources.js";
+import { getLangfuse } from "../tracing.js";
 import { z } from "zod";
 
 export const api = new Hono();
+
+// Langfuse tracing middleware — creates a trace per request
+api.use("/api/*", async (c, next) => {
+  const lf = getLangfuse();
+  if (!lf) return next();
+
+  const trace = lf.trace({
+    name: `${c.req.method} ${c.req.path}`,
+    input: c.req.method === "GET"
+      ? { query: c.req.query() }
+      : undefined,
+    metadata: { method: c.req.method, path: c.req.path },
+    tags: ["swarm-api"],
+  });
+  const span = trace.span({ name: "handle-request" });
+  try {
+    await next();
+    span.end({ output: { status: c.res.status } });
+    trace.update({ output: { status: c.res.status } });
+  } catch (err) {
+    span.end({ output: { error: err instanceof Error ? err.message : String(err) }, level: "ERROR" as const });
+    trace.update({ output: { error: err instanceof Error ? err.message : String(err) } });
+    throw err;
+  }
+});
 
 api.get("/health", (c) => c.json({ status: "ok", version: "2.0.0" }));
 
