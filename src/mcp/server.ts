@@ -29,9 +29,11 @@ export const transcriptMcpServer = createSdkMcpServer({
         const entry = await ingestYouTubeVideo(args.url, args.language, args.tags);
         // Read transcript body from vault — avoids a redundant network round-trip
         const note = await readNote("youtube", `${entry.id}.md`);
-        const transcriptSection = note
-          ? note.slice(note.indexOf("## Transcript"))
-          : entry.summary || "";
+        const transcriptSection = (() => {
+          if (!note) return entry.summary || "";
+          const idx = note.indexOf("## Transcript");
+          return idx === -1 ? note : note.slice(idx);
+        })();
 
         const output = [
           `# ${entry.title || entry.id}`,
@@ -326,6 +328,37 @@ export const transcriptMcpServer = createSdkMcpServer({
       async () => {
         const report = getCostReport();
         return { content: [{ type: "text" as const, text: report.summary }] };
+      },
+    ),
+
+    // === Observability Tools ===
+
+    tool(
+      "get_trace_url",
+      "Return the LangFuse dashboard URL for a given agent session. Useful for debugging agent behavior and inspecting token usage.",
+      {
+        session_id: z.string().describe("Agent session ID (typically the group folder, e.g. 'slack_swarm-coder')"),
+      },
+      async (args) => {
+        const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
+        const secretKey = process.env.LANGFUSE_SECRET_KEY;
+
+        if (!publicKey || !secretKey) {
+          return {
+            content: [{ type: "text" as const, text: "LangFuse is not configured (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set)." }],
+          };
+        }
+
+        const host = process.env.LANGFUSE_HOST || "https://cloud.langfuse.com";
+        const sessionUrl = `${host}/sessions/${encodeURIComponent(args.session_id)}`;
+        const text = [
+          `LangFuse session: ${args.session_id}`,
+          `URL: ${sessionUrl}`,
+          "",
+          `Traces dashboard: ${host}/traces`,
+        ].join("\n");
+
+        return { content: [{ type: "text" as const, text }] };
       },
     ),
   ],
