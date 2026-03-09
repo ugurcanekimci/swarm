@@ -10,11 +10,12 @@ import { ingestYouTubeVideo } from "../ingest/youtube.js";
 import { ingestTweet, ingestUserTimeline, ingestSearchTweets } from "../ingest/x-twitter.js";
 import { planTask, getCostReport } from "../orchestrator/index.js";
 import { config } from "../config.js";
+import { instrumentTools } from "./observability.js";
 
 export const transcriptMcpServer = createSdkMcpServer({
   name: "swarm-knowledge",
   version: "2.0.0",
-  tools: [
+  tools: instrumentTools([
     // === YouTube Tools ===
 
     tool(
@@ -360,7 +361,7 @@ export const transcriptMcpServer = createSdkMcpServer({
         return { content: [{ type: "text" as const, text }] };
       },
     ),
-  ],
+  ]),
 });
 
 function formatEntryLine(e: IndexEntry): string {

@@ -133,16 +133,10 @@ echo "[5/6] Starting Docker services..."
 
 cd "$SWARM_DIR"
 
-# Start Crawl4AI if not running
-if docker ps --format '{{.Names}}' | grep -q 'crawl4ai'; then
-  echo "  Crawl4AI already running"
-else
-  echo "  Starting Crawl4AI..."
-  docker run -d --name crawl4ai -p 11235:11235 --restart unless-stopped \
-    unclecode/crawl4ai:latest 2>/dev/null || \
-  docker start crawl4ai 2>/dev/null || \
-  echo "  WARNING: Could not start Crawl4AI (run docker pull unclecode/crawl4ai:latest first)"
-fi
+# Crawl4AI is on-demand only — not auto-started.
+# The scraping router handles graceful fallback when unavailable.
+# To start manually: docker compose --profile scraping up crawl4ai -d
+echo "  Crawl4AI: on-demand (start with: docker compose --profile scraping up crawl4ai -d)"
 
 echo ""
 
