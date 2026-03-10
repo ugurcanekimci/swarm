@@ -46,9 +46,11 @@ for group in "${SWARM_GROUPS[@]}"; do
 
   # --- 1. Agent-runner source with allowedTools patch ---
   target="$SESSIONS_DIR/$group/agent-runner-src"
-  if [ -d "$target" ]; then
+  if [ -d "$target" ] && [ -n "$(ls -A "$target" 2>/dev/null)" ]; then
     echo "  agent-runner-src/ exists — checking patch..."
   else
+    # Remove empty directory if it exists
+    [ -d "$target" ] && rm -rf "$target"
     echo "  Copying agent-runner source..."
     mkdir -p "$target"
     cp "$AGENT_RUNNER_TEMPLATE"/* "$target/" 2>/dev/null || true

@@ -22,6 +22,6 @@
     }
   },
   "permissions": {
-    "allow": ["mcp__swarm__*"]
+    "allow": ["mcp__swarm__*", "mcp__nanoclaw__*"]
   }
 }
